@@ -1,0 +1,9 @@
+# Ambiente Virtual Python
+venv/
+__pycache__/
+
+# Banco de Dados SQLite
+*.db
+
+# Uploads locais
+arquivos_salvos/
