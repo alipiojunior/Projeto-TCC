@@ -70,6 +70,31 @@ def criar_projeto(projeto: ProjetoCriar, db: Session = Depends(obter_banco_dados
 def listar_projetos(db: Session = Depends(obter_banco_dados)):
     return db.query(Projeto).all()
 
+@app.delete("/projetos/{projeto_id}")
+def deletar_projeto(projeto_id: int, db: Session = Depends(obter_banco_dados)):
+    projeto = db.query(Projeto).filter(Projeto.id == projeto_id).first()
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    
+    db.delete(projeto)
+    db.commit()
+    return {"mensagem": "Projeto excluído com sucesso"}
+
+@app.put("/projetos/{projeto_id}")
+def editar_projeto(projeto_id: int, projeto_atualizado: ProjetoCriar, db: Session = Depends(obter_banco_dados)):
+    projeto = db.query(Projeto).filter(Projeto.id == projeto_id).first()
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    
+    projeto.titulo = projeto_atualizado.titulo
+    projeto.tipo = projeto_atualizado.tipo
+    projeto.descricao = projeto_atualizado.descricao
+    projeto.orientador = projeto_atualizado.orientador
+    
+    db.commit()
+    db.refresh(projeto)
+    return projeto
+
 @app.post("/tarefas/")
 def criar_tarefa(tarefa: TarefaCriar, db: Session = Depends(obter_banco_dados)):
     nova_tarefa = Tarefa(**tarefa.dict())
