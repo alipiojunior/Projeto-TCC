@@ -42,6 +42,7 @@ class Membro(Base):
     nome = Column(String)
     disciplinas = Column(String) 
     professor = Column(String, nullable=True) 
+    data_entrega = Column(String, nullable=True)
     
     projeto = relationship("Projeto", back_populates="membros")
 
@@ -69,6 +70,32 @@ class MembroCriar(BaseModel):
     nome: str
     disciplinas: str
     professor: Optional[str] = None
+    data_entrega: Optional[str] = None
+
+class TarefaCriar(BaseModel):
+    projeto_id: int
+    titulo: str
+    status: str = "A Fazer"
+
+class TarefaStatusAtualizar(BaseModel):
+    status: str
+
+class TarefaResponse(BaseModel):
+    id: int
+    titulo: str
+    status: str
+    caminho_arquivo: Optional[str]
+    class Config:
+        orm_mode = True
+
+class MembroResponse(BaseModel):
+    id: int
+    nome: str
+    disciplinas: str
+    professor: Optional[str]
+    data_entrega: Optional[str]
+    class Config:
+        orm_mode = True
 
 class ProjetoCriar(BaseModel):
     titulo: str
@@ -78,14 +105,6 @@ class ProjetoCriar(BaseModel):
     nome_equipe: Optional[str] = None
     membros: List[MembroCriar] = []
 
-class MembroResponse(BaseModel):
-    id: int
-    nome: str
-    disciplinas: str
-    professor: Optional[str]
-    class Config:
-        orm_mode = True
-
 class ProjetoResponse(BaseModel):
     id: int
     titulo: str
@@ -94,30 +113,23 @@ class ProjetoResponse(BaseModel):
     orientador: Optional[str]
     nome_equipe: Optional[str]
     membros: List[MembroResponse] = []
+    tarefas: List[TarefaResponse] = []
     class Config:
         orm_mode = True
 
-class TarefaCriar(BaseModel):
-    projeto_id: int
-    titulo: str
-    status: str = "A Fazer"
-
-# Rotas
+# Rotas de Projetos
 @app.post("/projetos/", response_model=ProjetoResponse)
 def criar_projeto(projeto: ProjetoCriar, db: Session = Depends(obter_banco_dados)):
     novo_projeto = Projeto(
-        titulo=projeto.titulo,
-        tipo=projeto.tipo,
-        descricao=projeto.descricao,
-        orientador=projeto.orientador,
-        nome_equipe=projeto.nome_equipe
+        titulo=projeto.titulo, tipo=projeto.tipo, descricao=projeto.descricao,
+        orientador=projeto.orientador, nome_equipe=projeto.nome_equipe
     )
     db.add(novo_projeto)
     db.commit()
     db.refresh(novo_projeto)
     
     for m in projeto.membros:
-        novo_membro = Membro(projeto_id=novo_projeto.id, nome=m.nome, disciplinas=m.disciplinas, professor=m.professor)
+        novo_membro = Membro(projeto_id=novo_projeto.id, nome=m.nome, disciplinas=m.disciplinas, professor=m.professor, data_entrega=m.data_entrega)
         db.add(novo_membro)
         
     db.commit()
@@ -133,7 +145,6 @@ def deletar_projeto(projeto_id: int, db: Session = Depends(obter_banco_dados)):
     projeto = db.query(Projeto).filter(Projeto.id == projeto_id).first()
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
-    
     db.delete(projeto)
     db.commit()
     return {"mensagem": "Projeto excluído com sucesso"}
@@ -152,31 +163,36 @@ def editar_projeto(projeto_id: int, projeto_atualizado: ProjetoCriar, db: Sessio
     
     db.query(Membro).filter(Membro.projeto_id == projeto_id).delete()
     for m in projeto_atualizado.membros:
-        novo_membro = Membro(projeto_id=projeto_id, nome=m.nome, disciplinas=m.disciplinas, professor=m.professor)
+        novo_membro = Membro(projeto_id=projeto_id, nome=m.nome, disciplinas=m.disciplinas, professor=m.professor, data_entrega=m.data_entrega)
         db.add(novo_membro)
         
     db.commit()
     db.refresh(projeto)
     return projeto
 
+# Rotas de Tarefas
 @app.post("/tarefas/")
 def criar_tarefa(tarefa: TarefaCriar, db: Session = Depends(obter_banco_dados)):
-    nova_tarefa = Tarefa(**tarefa.dict())
+    nova_tarefa = Tarefa(projeto_id=tarefa.projeto_id, titulo=tarefa.titulo, status=tarefa.status)
     db.add(nova_tarefa)
     db.commit()
     db.refresh(nova_tarefa)
     return nova_tarefa
 
-@app.post("/tarefas/{tarefa_id}/upload")
-def upload_arquivo_tarefa(tarefa_id: int, arquivo: UploadFile = File(...), db: Session = Depends(obter_banco_dados)):
-    caminho_salvar = f"arquivos_salvos/{arquivo.filename}"
-    with open(caminho_salvar, "wb") as buffer:
-        shutil.copyfileobj(arquivo.file, buffer)
-    
+@app.put("/tarefas/{tarefa_id}/status")
+def atualizar_status_tarefa(tarefa_id: int, atualizacao: TarefaStatusAtualizar, db: Session = Depends(obter_banco_dados)):
     tarefa = db.query(Tarefa).filter(Tarefa.id == tarefa_id).first()
     if not tarefa:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada")
-    
-    tarefa.caminho_arquivo = caminho_salvar
+    tarefa.status = atualizacao.status
     db.commit()
-    return {"mensagem": "Upload concluído", "caminho_arquivo": caminho_salvar}
+    return {"mensagem": "Status atualizado"}
+
+@app.delete("/tarefas/{tarefa_id}")
+def deletar_tarefa(tarefa_id: int, db: Session = Depends(obter_banco_dados)):
+    tarefa = db.query(Tarefa).filter(Tarefa.id == tarefa_id).first()
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    db.delete(tarefa)
+    db.commit()
+    return {"mensagem": "Tarefa excluída com sucesso"}
